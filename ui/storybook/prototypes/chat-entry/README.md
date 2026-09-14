@@ -1,30 +1,19 @@
-# Chat entry UX review
+# Agent chat discovery
 
-Open **Design explorations → Chat entry → 01 · First use · Start here**.
+Open **Design explorations → Chat entry**. The sidebar, picker, conversation,
+and composer are production components backed by the agent-chat in-memory API.
+Only the first-use landing page is a review fixture. No real agents run.
 
-This proposal adds a Chats section, compose action on hover or keyboard focus (visible on touch), and a company-wide
-picker with name/role search. First use uses the same compact sidebar rows as
-returning chats. The first-created agent always remains as the default entry,
-even when unstarred and absent from recents. Compose and star controls share
-the same vertical column. The picker has no subtitle, count, continuation
-labels, or footer. Stars and recents are
-local to the mounted review. Existing conversations continue without resetting
-history. Selecting another agent opens the actual production chat composer; send
-appends to the in-memory fixture. Paused Operations has a review-only explanation
-and links to the fixture agent settings, with no implicit resume.
+The earliest-created agent always stays in Chats, even after unstarring. Stars
+precede that default and four recent agents. Compose and star controls align;
+compose appears on hover/focus and remains visible on touch. The picker searches
+the whole company by name or role, with no subtitle, count, continuation labels,
+or footer. Each agent keeps a distinct fixture conversation across switches.
 
 Stories cover first use, returning chats, picker, role search, search recovery,
-paused agent, larger roster, light theme, and mobile. Try selecting Design Lead,
-sending a message, switching to CodexCoder, and returning to Design Lead. Star a
-conversation to keep it above recents. All data is simulated.
+paused-agent discovery, larger roster, light theme, and mobile. Try selecting
+Design Lead, sending a message, switching to CodexCoder, and returning. Star a
+conversation to keep it above recents. Story-scoped recent visits are restored
+on unmount.
 
-The production app is unchanged. Only Storybook files implement the proposal.
-The existing agent-chat fixture accepts an optional entryScenario and mounts the
-review via Layout's existing sidebarSections slot. Its lazy creation fixture also
-preserves each agent's distinct conversation identity.
-
-Run from this worktree:
-
-```sh
-pnpm --filter @paperclipai/ui exec storybook dev --port 6018 --host 127.0.0.1 --no-open -c storybook/.storybook
-```
+Run `pnpm storybook` from the repository root.

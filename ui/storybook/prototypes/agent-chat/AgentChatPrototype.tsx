@@ -27,7 +27,7 @@ import {
   storybookIssueDocuments,
 } from "../../fixtures/paperclipData";
 import { chatAgents, chatIdentifier } from "./AgentChatSidebar";
-import { ChatEntryReviewProvider, ChatEntrySidebar, ChatEntryLanding, ChatEntryConversation, reviewRoster, type EntryScenario } from "../chat-entry/ChatEntryReview";
+import { ChatEntryReviewProvider, ChatEntrySidebar, ChatEntryLanding, reviewRoster, type EntryScenario } from "../chat-entry/ChatEntryReview";
 
 const agent = storybookAgents.find((agent) => agent.id === "agent-codex")!;
 const issue = {
@@ -227,6 +227,9 @@ export function AgentChatPrototype({
   }, [contextInitiallyOpen, setPanelVisible]);
   useLayoutEffect(() => {
     const originalFetch = window.fetch;
+    const recentKey = `paperclip.recentAgentChats:${issue.companyId}:user-board`;
+    const previousRecents = localStorage.getItem(recentKey);
+    if (entryScenario) localStorage.setItem(recentKey, "[]");
     const chats = new Map<
       string,
       typeof issue & {
@@ -240,7 +243,7 @@ export function AgentChatPrototype({
       projectMemberships: {},
       agentMemberships: {},
       starredProjectIds: [],
-      starredAgentIds: ["agent-cto"],
+      starredAgentIds: entryScenario === "first-use" ? [] : ["agent-cto"],
       starredDocumentIds: [],
       projectStarredAt: {},
       agentStarredAt: {},
@@ -320,7 +323,7 @@ export function AgentChatPrototype({
         updatedAt: Date.now(),
       });
     }
-    for (const id of ["chat-design", "agent-qa", "agent-codex"])
+    for (const id of entryScenario === "first-use" ? [] : ["chat-design", "agent-qa", "agent-codex"])
       recordAgentChatVisit(issue.companyId, "user-board", id);
     window.fetch = async (input, init) => {
       const url = new URL(
@@ -372,7 +375,9 @@ export function AgentChatPrototype({
         members.starredAgentIds = body.starred
           ? [...new Set([...members.starredAgentIds, id])]
           : members.starredAgentIds.filter((i) => i !== id);
-        return Response.json(members);
+        return Response.json({
+          resourceId: id, state: "joined", starredAt: body.starred ? new Date().toISOString() : null,
+        });
       }
       if (method === "POST" && path.endsWith("/comments")) {
         if (failSend) {
@@ -535,6 +540,11 @@ export function AgentChatPrototype({
     setReady(true);
     return () => {
       window.fetch = originalFetch;
+      if (entryScenario) {
+        if (previousRecents === null) localStorage.removeItem(recentKey);
+        else localStorage.setItem(recentKey, previousRecents);
+        window.dispatchEvent(new Event("paperclip:recent-agent-chats"));
+      }
       queryClient.clear();
     };
   }, [scenario, taskComparison, entryScenario, queryClient]);
@@ -552,7 +562,7 @@ export function AgentChatPrototype({
       <Routes>
         <Route path="/:companyPrefix" element={<Layout sidebarSections={entryScenario ? <ChatEntrySidebar /> : undefined} />}>
           <Route path="chats" element={<ChatEntryLanding />} />
-          <Route path="chats/:agentRef" element={entryScenario ? <ChatEntryConversation /> : <AgentChat />} />
+          <Route path="chats/:agentRef" element={<AgentChat />} />
           <Route path="issues/:issueId" element={<IssueDetail />} />
           <Route path="agents" element={<Agents />} />
           {AGENT_FILTER_TABS.map((tab) => (
