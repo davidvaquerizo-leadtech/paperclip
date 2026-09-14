@@ -148,4 +148,26 @@ describe("createDb with the retrying client", () => {
     const db = createDb(url, { connectTimeoutSeconds: 5, prepare: false });
     await expect(db.execute(drizzleSql`select 0`)).resolves.toBeDefined();
   });
+
+  it("leaves every other client surface reachable through the proxy", async () => {
+    // Drizzle itself only awaits `unsafe()` or takes its `.values()`, but the
+    // client is reachable as `db.$client`, and callers use it as a tagged
+    // template, open transactions on it, and end it. A wrapper that broke any
+    // of those would fail far from here, so pin them against the real driver.
+    const started = await startFakePostgresServer();
+    server = started.server;
+    url = `postgres://test:test@127.0.0.1:${started.port}/test`;
+    const db = createDb(url, { connectTimeoutSeconds: 5, prepare: false });
+    const client = (db as unknown as { $client: Sql }).$client;
+
+    await expect(client`select 1`).resolves.toBeDefined();
+    await expect(client.unsafe("select 1", [])).resolves.toBeDefined();
+    await expect(
+      client.begin(async (tx) => {
+        await tx.unsafe("select 1", []);
+        return "transaction result";
+      }),
+    ).resolves.toBe("transaction result");
+    await expect(client.end({ timeout: 1 })).resolves.toBeUndefined();
+  });
 });
