@@ -43,6 +43,7 @@ export const LEGACY_SESSIONED_ADAPTER_TYPES = new Set([
   "cursor",
   "gemini_local",
   "hermes_local",
+  "kilocode_local",
   "kimi_local",
   "opencode_local",
   "pi_local",
@@ -80,6 +81,11 @@ export const ADAPTER_SESSION_MANAGEMENT: Record<string, AdapterSessionManagement
     defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
   },
   opencode_local: {
+    supportsSessionResume: true,
+    nativeContextManagement: "unknown",
+    defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,
+  },
+  kilocode_local: {
     supportsSessionResume: true,
     nativeContextManagement: "unknown",
     defaultSessionCompaction: DEFAULT_SESSION_COMPACTION_POLICY,

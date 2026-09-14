@@ -14,6 +14,7 @@ describe("adapter display registry", () => {
     expect(getAdapterLabel("hermes_local")).toBe("Hermes");
     expect(getAdapterLabel("hermes_gateway")).toBe("Hermes Gateway");
     expect(getAdapterLabel("opencode_local")).toBe("OpenCode");
+    expect(getAdapterLabel("kilocode_local")).toBe("Kilo Code");
     expect(getAdapterLabel("pi_local")).toBe("Pi");
 
     expect(getAdapterLabels()).toMatchObject({
@@ -27,6 +28,7 @@ describe("adapter display registry", () => {
       hermes_local: "Hermes",
       hermes_gateway: "Hermes Gateway",
       opencode_local: "OpenCode",
+      kilocode_local: "Kilo Code",
       pi_local: "Pi",
     });
   });

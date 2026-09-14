@@ -117,6 +117,11 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     description: "OpenCode multi-provider harness",
     icon: OpenCodeLogoIcon,
   },
+  kilocode_local: {
+    label: "Kilo Code",
+    description: "Kilo Code CLI harness (OpenCode-based, Kilo Gateway models)",
+    icon: Terminal,
+  },
   pi_local: {
     label: "Pi",
     description: "Pi harness",

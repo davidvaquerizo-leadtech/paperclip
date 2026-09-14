@@ -85,6 +85,18 @@ import {
   models as grokModels,
 } from "@paperclipai/adapter-grok-local";
 import {
+  execute as kiloCodeExecute,
+  listKiloCodeSkills,
+  syncKiloCodeSkills,
+  testEnvironment as kiloCodeTestEnvironment,
+  sessionCodec as kiloCodeSessionCodec,
+  listKiloCodeModels,
+} from "@paperclipai/adapter-kilocode-local/server";
+import {
+  agentConfigurationDoc as kiloCodeAgentConfigurationDoc,
+  models as kiloCodeModels,
+} from "@paperclipai/adapter-kilocode-local";
+import {
   execute as kimiExecute,
   listKimiSkills,
   syncKimiSkills,
@@ -819,6 +831,25 @@ const openCodeLocalAdapter: ServerAdapterModule = {
   agentConfigurationDoc: openCodeAgentConfigurationDoc,
 };
 
+const kiloCodeLocalAdapter: ServerAdapterModule = {
+  type: "kilocode_local",
+  runtimeToolDelivery: "environment",
+  execute: kiloCodeExecute,
+  testEnvironment: kiloCodeTestEnvironment,
+  listSkills: listKiloCodeSkills,
+  syncSkills: syncKiloCodeSkills,
+  sessionCodec: kiloCodeSessionCodec,
+  models: kiloCodeModels,
+  sessionManagement: getAdapterSessionManagement("kilocode_local") ?? undefined,
+  listModels: listKiloCodeModels,
+  supportsLocalAgentJwt: true,
+  supportsInstructionsBundle: true,
+  instructionsPathKey: "instructionsFilePath",
+  requiresMaterializedRuntimeSkills: true,
+  getRuntimeCommandSpec: (config) => buildNpmRuntimeCommandSpec(config, "kilo", "@kilocode/cli"),
+  agentConfigurationDoc: kiloCodeAgentConfigurationDoc,
+};
+
 const piLocalAdapter: ServerAdapterModule = {
   type: "pi_local",
   runtimeToolDelivery: "environment",
@@ -857,6 +888,7 @@ function registerBuiltInAdapters() {
     codexLocalAdapter,
     paperclipRunnerAdapter,
     openCodeLocalAdapter,
+    kiloCodeLocalAdapter,
     piLocalAdapter,
     cursorCloudAdapter,
     cursorLocalAdapter,

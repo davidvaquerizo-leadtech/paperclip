@@ -45,6 +45,11 @@
     "publishFromCi": false
   },
   {
+    "dir": "packages/adapters/kilocode-local",
+    "name": "@paperclipai/adapter-kilocode-local",
+    "publishFromCi": true
+  },
+  {
     "dir": "packages/adapters/kimi-local",
     "name": "@paperclipai/adapter-kimi-local",
     "publishFromCi": true

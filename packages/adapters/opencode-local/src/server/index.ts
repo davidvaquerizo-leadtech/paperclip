@@ -60,14 +60,25 @@ export const sessionCodec: AdapterSessionCodec = {
   },
 };
 
-export { execute } from "./execute.js";
-export { listOpenCodeSkills, syncOpenCodeSkills } from "./skills.js";
-export { testEnvironment } from "./test.js";
+export { execute, createExecute } from "./execute.js";
+export {
+  listOpenCodeSkills,
+  syncOpenCodeSkills,
+  createOpenCodeSkillsApi,
+  resolveFlavorSkillsHome,
+  type OpenCodeSkillsApi,
+} from "./skills.js";
+export { testEnvironment, createTestEnvironment } from "./test.js";
 export {
   listOpenCodeModels,
   discoverOpenCodeModels,
   ensureOpenCodeModelConfiguredAndAvailable,
   requireOpenCodeModelId,
+  requireFlavorModelId,
   resetOpenCodeModelsCacheForTests,
+  createOpenCodeModelsApi,
+  type OpenCodeModelsApi,
 } from "./models.js";
 export { parseOpenCodeJsonl, isOpenCodeUnknownSessionError } from "./parse.js";
+export { OPENCODE_FLAVOR, type OpenCodeFlavor } from "../flavor.js";
+export { createOpenCodeFlavorServerModule, type OpenCodeFlavorServerModule } from "./flavor-module.js";

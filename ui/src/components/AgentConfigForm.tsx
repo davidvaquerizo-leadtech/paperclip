@@ -35,6 +35,7 @@ import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { DEFAULT_KIMI_LOCAL_MODEL } from "@paperclipai/adapter-kimi-local";
 import { DEFAULT_OPENCODE_LOCAL_MODEL } from "@paperclipai/adapter-opencode-local";
+import { DEFAULT_KILOCODE_LOCAL_MODEL } from "@paperclipai/adapter-kilocode-local";
 import {
   Popover,
   PopoverContent,
@@ -172,7 +173,7 @@ const emptyOverlay: AgentConfigOverlay = {
 const EMPTY_ENV: Record<string, EnvBinding> = {};
 
 export function supportsAdapterModelRefresh(adapterType: string): boolean {
-  return adapterType === "claude_local" || adapterType === "codex_local" || adapterType === "paperclip_runner" || adapterType === "opencode_local";
+  return adapterType === "claude_local" || adapterType === "codex_local" || adapterType === "paperclip_runner" || adapterType === "opencode_local" || adapterType === "kilocode_local";
 }
 
 export function resolvePaperclipRunnerTransitionModel(
@@ -1266,7 +1267,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       ? "modelReasoningEffort"
       : adapterType === "cursor"
         ? "mode"
-        : adapterType === "opencode_local"
+        : adapterType === "opencode_local" || adapterType === "kilocode_local"
           ? "variant"
           : adapterType === "pi_local" ? "thinking" : "effort";
   const thinkingEffortOptions =
@@ -1277,7 +1278,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         }))
       : adapterType === "cursor"
         ? cursorModeOptions
-        : adapterType === "opencode_local"
+        : adapterType === "opencode_local" || adapterType === "kilocode_local"
           ? openCodeThinkingEffortOptions
           : adapterType === "kimi_local"
             ? kimiThinkingEffortOptions
@@ -1294,7 +1295,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         )
       : adapterType === "cursor"
         ? eff("adapterConfig", "mode", String(config.mode ?? ""))
-        : adapterType === "opencode_local"
+        : adapterType === "opencode_local" || adapterType === "kilocode_local"
           ? eff("adapterConfig", "variant", String(config.variant ?? ""))
           : eff("adapterConfig", thinkingEffortKey, String(config[thinkingEffortKey] ?? ""));
   const showThinkingEffort = adapterType !== "gemini_local"
@@ -1605,6 +1606,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       nextValues.model = DEFAULT_CURSOR_LOCAL_MODEL;
                     } else if (t === "opencode_local") {
                       nextValues.model = DEFAULT_OPENCODE_LOCAL_MODEL;
+                    } else if (t === "kilocode_local") {
+                      nextValues.model = DEFAULT_KILOCODE_LOCAL_MODEL;
                     } else if (t === "paperclip_runner") {
                       nextValues.model = DEFAULT_CODEX_LOCAL_MODEL;
                     }
@@ -1623,6 +1626,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                               ? DEFAULT_KIMI_LOCAL_MODEL
                             : t === "opencode_local"
                               ? DEFAULT_OPENCODE_LOCAL_MODEL
+                            : t === "kilocode_local"
+                              ? DEFAULT_KILOCODE_LOCAL_MODEL
                             : t === "cursor"
                               ? DEFAULT_CURSOR_LOCAL_MODEL
                             : t === "paperclip_runner"
@@ -1733,13 +1738,13 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 open={modelOpen}
                 onOpenChange={setModelOpen}
                 defaultLabel={adapterType === "claude_local" ? `Default (${DEFAULT_CLAUDE_LOCAL_MODEL})` : undefined}
-                allowDefault={adapterType !== "opencode_local" && adapterType !== "pi_local" && adapterType !== "paperclip_runner"}
-                required={adapterType === "opencode_local" || adapterType === "pi_local"}
-                groupByProvider={adapterType === "opencode_local" || adapterType === "pi_local"}
+                allowDefault={adapterType !== "opencode_local" && adapterType !== "kilocode_local" && adapterType !== "pi_local" && adapterType !== "paperclip_runner"}
+                required={adapterType === "opencode_local" || adapterType === "kilocode_local" || adapterType === "pi_local"}
+                groupByProvider={adapterType === "opencode_local" || adapterType === "kilocode_local" || adapterType === "pi_local"}
                 creatable
                 detectedModel={detectedModel}
                 detectedModelCandidates={[]}
-                onDetectModel={adapterType === "opencode_local" || adapterType === "paperclip_runner"
+                onDetectModel={adapterType === "opencode_local" || adapterType === "kilocode_local" || adapterType === "paperclip_runner"
                   ? undefined
                   : async () => {
                       const result = await refetchDetectedModel();
@@ -1762,11 +1767,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       : "Failed to load adapter models.")}
                 </p>
               )}
-              {adapterType === "opencode_local"
+              {(adapterType === "opencode_local" || adapterType === "kilocode_local")
                 && currentDefaultEnvironment
                 && currentDefaultEnvironment.driver !== "local" && (
                 <p className="text-xs text-muted-foreground">
-                  Live OpenCode model discovery only runs for Local environments. Using the curated list and manual entry for {currentDefaultEnvironment.name}.
+                  Live {adapterType === "kilocode_local" ? "Kilo Code" : "OpenCode"} model discovery only runs for Local environments. Using the curated list and manual entry for {currentDefaultEnvironment.name}.
                 </p>
               )}
 
@@ -1880,6 +1885,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                         pi_local: "pi",
                         cursor: "agent",
                         opencode_local: "opencode",
+                        kilocode_local: "kilo",
                       } as Record<string, string>)[adapterType] ?? adapterType.replace(/_local$/, "")
                     }
                   />

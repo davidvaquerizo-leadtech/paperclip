@@ -107,6 +107,7 @@ import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { DEFAULT_KIMI_LOCAL_MODEL } from "@paperclipai/adapter-kimi-local";
 import { DEFAULT_OPENCODE_LOCAL_MODEL, isValidOpenCodeModelId } from "@paperclipai/adapter-opencode-local";
+import { DEFAULT_KILOCODE_LOCAL_MODEL } from "@paperclipai/adapter-kilocode-local";
 import {
   canGoBackFromOnboardingStep,
   canJumpToOnboardingStep,
@@ -1104,6 +1105,7 @@ function OnboardingWizardInner({
     adapterType === "gemini_local" ||
     adapterType === "kimi_local" ||
     adapterType === "opencode_local" ||
+    adapterType === "kilocode_local" ||
     adapterType === "pi_local" ||
     adapterType === "cursor";
   // Build adapter grids dynamically from the UI registry + display metadata.
@@ -1477,6 +1479,10 @@ function OnboardingWizardInner({
       setModel(DEFAULT_OPENCODE_LOCAL_MODEL);
       return;
     }
+    if (next === "kilocode_local") {
+      setModel(DEFAULT_KILOCODE_LOCAL_MODEL);
+      return;
+    }
     if (next === "gemini_local") {
       setModel(DEFAULT_GEMINI_LOCAL_MODEL);
       return;
@@ -1496,6 +1502,7 @@ function OnboardingWizardInner({
     pi_local: "pi",
     cursor: "agent",
     opencode_local: "opencode",
+    kilocode_local: "kilo",
   };
   const effectiveAdapterCommand =
     command.trim() ||
@@ -1566,7 +1573,7 @@ function OnboardingWizardInner({
     });
   }, [adapterModels, modelSearch]);
   const groupedModels = useMemo(() => {
-    if (adapterType !== "opencode_local") {
+    if (adapterType !== "opencode_local" && adapterType !== "kilocode_local") {
       return [
         {
           provider: "models",
@@ -1804,12 +1811,14 @@ function OnboardingWizardInner({
             ? model || DEFAULT_CURSOR_LOCAL_MODEL
             : adapterType === "opencode_local"
               ? model || DEFAULT_OPENCODE_LOCAL_MODEL
+            : adapterType === "kilocode_local"
+              ? model || DEFAULT_KILOCODE_LOCAL_MODEL
               : model,
       command,
       args,
       url,
       dangerouslySkipPermissions:
-        adapterType === "claude_local" || adapterType === "opencode_local",
+        adapterType === "claude_local" || adapterType === "opencode_local" || adapterType === "kilocode_local",
       dangerouslyBypassSandbox:
         adapterType === "codex_local"
           ? DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX
@@ -2013,6 +2022,15 @@ function OnboardingWizardInner({
     setLoading(true);
     setError(null);
     try {
+      if (adapterType === "kilocode_local") {
+        const selectedModelId = model.trim();
+        if (!isValidOpenCodeModelId(selectedModelId)) {
+          setError(
+            "Kilo Code requires an explicit model in provider/model format."
+          );
+          return;
+        }
+      }
       if (adapterType === "opencode_local") {
         const selectedModelId = model.trim();
         if (!isValidOpenCodeModelId(selectedModelId)) {
@@ -2642,6 +2660,7 @@ function OnboardingWizardInner({
                         setSourcePicked(true);
                         setAdapterType(id);
                         if (id === "opencode_local") setModel(DEFAULT_OPENCODE_LOCAL_MODEL);
+                        else if (id === "kilocode_local") setModel(DEFAULT_KILOCODE_LOCAL_MODEL);
                         else if (id !== "codex_local") setModel("");
                         setConnectPhase("collapsing");
                       }}
@@ -2934,6 +2953,8 @@ function OnboardingWizardInner({
                                 ? `${effectiveAdapterCommand} -p "Respond with hello." --output-format stream-json`
                               : adapterType === "opencode_local"
                                 ? `${effectiveAdapterCommand} run --format json "Respond with hello."`
+                              : adapterType === "kilocode_local"
+                                ? `${effectiveAdapterCommand} run --format json --auto "Respond with hello."`
                               : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
                           </p>
                           <p className="text-muted-foreground">
@@ -2944,7 +2965,8 @@ function OnboardingWizardInner({
                           adapterType === "codex_local" ||
                           adapterType === "gemini_local" ||
                           adapterType === "kimi_local" ||
-                          adapterType === "opencode_local" ? (
+                          adapterType === "opencode_local" ||
+                          adapterType === "kilocode_local" ? (
                             <p className="text-muted-foreground">
                               If auth fails, set{" "}
                               <span className="font-mono">
@@ -2954,6 +2976,8 @@ function OnboardingWizardInner({
                                     ? "GEMINI_API_KEY"
                                     : adapterType === "kimi_local"
                                       ? "KIMI_MODEL_NAME + KIMI_MODEL_API_KEY"
+                                    : adapterType === "kilocode_local"
+                                      ? "KILO_API_KEY"
                                     : "OPENAI_API_KEY"}
                               </span>{" "}
                               in env or run{" "}
@@ -2966,6 +2990,8 @@ function OnboardingWizardInner({
                                       ? "gemini auth"
                                       : adapterType === "kimi_local"
                                         ? "kimi login"
+                                      : adapterType === "kilocode_local"
+                                        ? "kilo auth login"
                                       : "opencode auth login"}
                               </span>
                               .

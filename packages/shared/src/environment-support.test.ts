@@ -52,6 +52,11 @@ describe("isSandboxProviderSupportedForAdapter", () => {
     ]);
   });
 
+  it("treats kilocode_local as a remote-managed local adapter", () => {
+    expect(adapterSupportsRemoteManagedEnvironments("kilocode_local")).toBe(true);
+    expect(supportedEnvironmentDriversForAdapter("kilocode_local")).toEqual(["local", "ssh", "sandbox"]);
+  });
+
   it("treats kimi_local as a remote-managed local adapter", () => {
     expect(adapterSupportsRemoteManagedEnvironments("kimi_local")).toBe(true);
     expect(supportedEnvironmentDriversForAdapter("kimi_local")).toEqual(["local", "ssh", "sandbox"]);

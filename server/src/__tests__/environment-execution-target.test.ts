@@ -265,6 +265,7 @@ describe("resolveEnvironmentExecutionTarget", () => {
       "cursor",
       "gemini_local",
       "grok_local",
+      "kilocode_local",
       "kimi_local",
       "opencode_local",
       "pi_local",

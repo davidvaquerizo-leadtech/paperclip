@@ -240,6 +240,17 @@ describe("adapter routes", () => {
       supportsAcp: false,
     });
 
+    const kiloCodeAdapter = res.body.find((a: any) => a.type === "kilocode_local");
+    expect(kiloCodeAdapter).toBeDefined();
+    expect(kiloCodeAdapter.source).toBe("builtin");
+    expect(kiloCodeAdapter.capabilities).toMatchObject({
+      supportsInstructionsBundle: true,
+      supportsSkills: true,
+      supportsLocalAgentJwt: true,
+      requiresMaterializedRuntimeSkills: true,
+      supportsAcp: false,
+    });
+
     const kimiAdapter = res.body.find((a: any) => a.type === "kimi_local");
     expect(kimiAdapter).toBeDefined();
     expect(kimiAdapter.capabilities).toMatchObject({

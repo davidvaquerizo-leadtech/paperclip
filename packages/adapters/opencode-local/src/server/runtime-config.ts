@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { asBoolean } from "@paperclipai/adapter-utils/server-utils";
+import { OPENCODE_FLAVOR, type OpenCodeFlavor } from "../flavor.js";
 
 type PreparedOpenCodeRuntimeConfig = {
   env: Record<string, string>;
@@ -51,6 +52,7 @@ function parseProviderConfig(
   raw: unknown,
   resolveEnv: (name: string) => string | undefined,
   notes: string[],
+  providersEnvVar: string,
 ): Record<string, unknown> | null {
   if (typeof raw !== "string" || raw.trim().length === 0) return null;
   let parsed: unknown;
@@ -59,12 +61,12 @@ function parseProviderConfig(
   } catch {
     // Surface the misconfiguration instead of silently dropping the provider
     // block; an unparseable value would otherwise be undiagnosable.
-    notes.push("PAPERCLIP_OPENCODE_PROVIDERS contains invalid JSON; custom providers ignored.");
+    notes.push(`${providersEnvVar} contains invalid JSON; custom providers ignored.`);
     return null;
   }
   if (!isPlainObject(parsed)) {
     notes.push(
-      "PAPERCLIP_OPENCODE_PROVIDERS is set but is not a JSON object; custom providers ignored.",
+      `${providersEnvVar} is set but is not a JSON object; custom providers ignored.`,
     );
     return null;
   }
@@ -78,7 +80,7 @@ function parseProviderConfig(
   }
   if (skipped.length > 0) {
     notes.push(
-      `PAPERCLIP_OPENCODE_PROVIDERS: skipped provider(s) with non-object values: ${skipped.join(", ")}.`,
+      `${providersEnvVar}: skipped provider(s) with non-object values: ${skipped.join(", ")}.`,
     );
   }
   return Object.keys(providers).length > 0 ? providers : null;
@@ -106,7 +108,10 @@ export async function prepareOpenCodeRuntimeConfig(input: {
   env: Record<string, string>;
   config: Record<string, unknown>;
   targetIsRemote?: boolean;
+  /** Which OpenCode-family CLI owns the config dir. Defaults to OpenCode. */
+  flavor?: OpenCodeFlavor;
 }): Promise<PreparedOpenCodeRuntimeConfig> {
+  const flavor = input.flavor ?? OPENCODE_FLAVOR;
   const skipPermissions = asBoolean(input.config.dangerouslySkipPermissions, true);
   if (!skipPermissions) {
     return {
@@ -129,10 +134,10 @@ export async function prepareOpenCodeRuntimeConfig(input: {
     };
   }
 
-  const sourceConfigDir = path.join(resolveXdgConfigHome(input.env), "opencode");
-  const runtimeConfigHome = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-opencode-config-"));
-  const runtimeConfigDir = path.join(runtimeConfigHome, "opencode");
-  const runtimeConfigPath = path.join(runtimeConfigDir, "opencode.json");
+  const sourceConfigDir = path.join(resolveXdgConfigHome(input.env), flavor.configDirName);
+  const runtimeConfigHome = await fs.mkdtemp(path.join(os.tmpdir(), flavor.runtimeConfigTmpPrefix));
+  const runtimeConfigDir = path.join(runtimeConfigHome, flavor.configDirName);
+  const runtimeConfigPath = path.join(runtimeConfigDir, flavor.configFileName);
 
   await fs.mkdir(runtimeConfigDir, { recursive: true });
   try {
@@ -153,7 +158,7 @@ export async function prepareOpenCodeRuntimeConfig(input: {
     ? existingConfig.permission
     : {};
   const notes = [
-    "Injected runtime OpenCode config with permission.external_directory=allow to avoid headless approval prompts.",
+    `Injected runtime ${flavor.productName} config with permission.external_directory=allow to avoid headless approval prompts.`,
   ];
 
   // Merge gateway/custom provider definitions supplied via PAPERCLIP_OPENCODE_PROVIDERS
@@ -165,9 +170,10 @@ export async function prepareOpenCodeRuntimeConfig(input: {
   // hard-coded) so the gateway URL, key env, and model list stay declarative.
   const resolveEnv = (name: string): string | undefined => input.env[name] ?? process.env[name];
   const gatewayProviders = parseProviderConfig(
-    input.env.PAPERCLIP_OPENCODE_PROVIDERS ?? process.env.PAPERCLIP_OPENCODE_PROVIDERS,
+    input.env[flavor.providersEnvVar] ?? process.env[flavor.providersEnvVar],
     resolveEnv,
     notes,
+    flavor.providersEnvVar,
   );
   const existingProvider = isPlainObject(existingConfig.provider) ? existingConfig.provider : {};
   let nextProvider = gatewayProviders
@@ -175,7 +181,7 @@ export async function prepareOpenCodeRuntimeConfig(input: {
     : existingProvider;
   if (gatewayProviders) {
     notes.push(
-      `Injected ${Object.keys(gatewayProviders).length} custom OpenCode provider(s) from PAPERCLIP_OPENCODE_PROVIDERS: ${Object.keys(gatewayProviders).join(", ")}.`,
+      `Injected ${Object.keys(gatewayProviders).length} custom ${flavor.productName} provider(s) from ${flavor.providersEnvVar}: ${Object.keys(gatewayProviders).join(", ")}.`,
     );
   }
 
@@ -200,7 +206,7 @@ export async function prepareOpenCodeRuntimeConfig(input: {
       providerEntry.models = providerModels;
       nextProvider = { ...nextProvider, [configuredModel.provider]: providerEntry };
       notes.push(
-        `Registered configured model ${configuredModel.provider}/${configuredModel.model} in the runtime OpenCode config.`,
+        `Registered configured model ${configuredModel.provider}/${configuredModel.model} in the runtime ${flavor.productName} config.`,
       );
     }
   }
@@ -222,10 +228,10 @@ export async function prepareOpenCodeRuntimeConfig(input: {
   // for the anthropic provider); when that provider is repointed at a gateway that
   // does not serve that exact model, the title-gen call fails and aborts the run.
   // Setting small_model to a gateway-served model keeps every call on supported models.
-  const smallModel = (input.env.PAPERCLIP_OPENCODE_SMALL_MODEL ?? process.env.PAPERCLIP_OPENCODE_SMALL_MODEL)?.trim();
+  const smallModel = (input.env[flavor.smallModelEnvVar] ?? process.env[flavor.smallModelEnvVar])?.trim();
   if (smallModel) {
     nextConfig.small_model = smallModel;
-    notes.push(`Pinned OpenCode small_model to ${smallModel}.`);
+    notes.push(`Pinned ${flavor.productName} small_model to ${smallModel}.`);
   }
   await fs.writeFile(runtimeConfigPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
 

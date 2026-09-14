@@ -53,15 +53,15 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 import { isOpenCodeUnknownSessionError, parseOpenCodeJsonl } from "./parse.js";
 import {
-  ensureOpenCodeModelConfiguredAndAvailable,
+  createOpenCodeModelsApi,
   isTruthyEnvFlag,
   parseOpenCodeModelsOutput,
-  requireOpenCodeModelId,
+  requireFlavorModelId,
 } from "./models.js";
-import { removeMaintainerOnlySkillSymlinks } from "@paperclipai/adapter-utils/server-utils";
+import { asBoolean, removeMaintainerOnlySkillSymlinks } from "@paperclipai/adapter-utils/server-utils";
 import { prepareOpenCodeRuntimeConfig, prepareManagedOpenCodeRemoteHomes } from "./runtime-config.js";
-import { SANDBOX_INSTALL_COMMAND } from "../index.js";
-import { resolveOpenCodeSkillsHome } from "./skills.js";
+import { OPENCODE_FLAVOR, type OpenCodeFlavor } from "../flavor.js";
+import { resolveFlavorSkillsHome } from "./skills.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -97,8 +97,11 @@ export async function ensureRemoteOpenCodeModelConfiguredAndAvailable(input: {
   env: Record<string, string>;
   timeoutSec: number;
   graceSec: number;
+  /** Which OpenCode-family CLI is being probed. Defaults to OpenCode. */
+  flavor?: OpenCodeFlavor;
 }) {
-  const model = requireOpenCodeModelId(input.model);
+  const flavor = input.flavor ?? OPENCODE_FLAVOR;
+  const model = requireFlavorModelId(flavor, input.model);
 
   // When the caller opts into OPENCODE_ALLOW_ALL_MODELS, OpenCode accepts any
   // provider/model at run time (e.g. gateway-routed models that never appear in
@@ -106,7 +109,7 @@ export async function ensureRemoteOpenCodeModelConfiguredAndAvailable(input: {
   // remote availability probe; we still enforce the provider/model format above.
   // Mirrors the local ensureOpenCodeModelConfiguredAndAvailable bypass. Prefer the
   // explicit run env, then the process env.
-  if (isTruthyEnvFlag(input.env.OPENCODE_ALLOW_ALL_MODELS ?? process.env.OPENCODE_ALLOW_ALL_MODELS)) {
+  if (isTruthyEnvFlag(input.env[flavor.allowAllModelsEnvVar] ?? process.env[flavor.allowAllModelsEnvVar])) {
     return;
   }
 
@@ -138,7 +141,7 @@ export async function ensureRemoteOpenCodeModelConfiguredAndAvailable(input: {
   // these threw and crashed runs mid-flight, losing the agent's work + disposition.)
   if (probe.timedOut) {
     console.warn(
-      `[opencode-local] Remote model availability probe for "${model}" timed out after ${probeTimeoutSec}s; proceeding with the configured model.`,
+      `${flavor.logPrefix} Remote model availability probe for "${model}" timed out after ${probeTimeoutSec}s; proceeding with the configured model.`,
     );
     return;
   }
@@ -146,7 +149,7 @@ export async function ensureRemoteOpenCodeModelConfiguredAndAvailable(input: {
   if ((probe.exitCode ?? 1) !== 0) {
     const detail = firstNonEmptyLine(probe.stderr) || firstNonEmptyLine(probe.stdout);
     console.warn(
-      `[opencode-local] Remote \`opencode models\` could not run for "${model}"${
+      `${flavor.logPrefix} Remote \`${flavor.defaultCommand} models\` could not run for "${model}"${
         detail ? ` (${detail})` : ""
       }; proceeding with the configured model.`,
     );
@@ -156,7 +159,7 @@ export async function ensureRemoteOpenCodeModelConfiguredAndAvailable(input: {
   const models = parseOpenCodeModelsOutput(probe.stdout);
   if (models.length === 0) {
     console.warn(
-      `[opencode-local] Remote \`opencode models\` returned no models; proceeding with the configured model "${model}".`,
+      `${flavor.logPrefix} Remote \`${flavor.defaultCommand} models\` returned no models; proceeding with the configured model "${model}".`,
     );
     return;
   }
@@ -164,16 +167,17 @@ export async function ensureRemoteOpenCodeModelConfiguredAndAvailable(input: {
   if (!models.some((entry) => entry.id === model)) {
     const sample = models.slice(0, 12).map((entry) => entry.id).join(", ");
     throw new Error(
-      `Configured OpenCode model is unavailable on the remote execution target: ${model}. Available models: ${sample}${models.length > 12 ? ", ..." : ""}`,
+      `Configured ${flavor.productName} model is unavailable on the remote execution target: ${model}. Available models: ${sample}${models.length > 12 ? ", ..." : ""}`,
     );
   }
 }
 
 async function ensureOpenCodeSkillsInjected(
+  flavor: OpenCodeFlavor,
   onLog: AdapterExecutionContext["onLog"],
   skillsEntries: Array<{ key: string; runtimeName: string; source: string }>,
-  desiredSkillNames?: string[],
-  skillsHome = resolveOpenCodeSkillsHome({}),
+  desiredSkillNames: string[] | undefined,
+  skillsHome: string,
 ) {
   await fs.mkdir(skillsHome, { recursive: true });
   const desiredSet = new Set(desiredSkillNames ?? skillsEntries.map((entry) => entry.key));
@@ -185,7 +189,7 @@ async function ensureOpenCodeSkillsInjected(
   for (const skillName of removedSkills) {
     await onLog(
       "stderr",
-      `[paperclip] Removed maintainer-only OpenCode skill "${skillName}" from ${skillsHome}\n`,
+      `[paperclip] Removed maintainer-only ${flavor.productName} skill "${skillName}" from ${skillsHome}\n`,
     );
   }
   for (const entry of selectedEntries) {
@@ -196,19 +200,19 @@ async function ensureOpenCodeSkillsInjected(
       if (result === "skipped") continue;
       await onLog(
         "stderr",
-        `[paperclip] ${result === "repaired" ? "Repaired" : "Injected"} OpenCode skill "${entry.key}" into ${skillsHome}\n`,
+        `[paperclip] ${result === "repaired" ? "Repaired" : "Injected"} ${flavor.productName} skill "${entry.key}" into ${skillsHome}\n`,
       );
     } catch (err) {
       await onLog(
         "stderr",
-        `[paperclip] Failed to inject OpenCode skill "${entry.key}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[paperclip] Failed to inject ${flavor.productName} skill "${entry.key}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }
 }
 
-async function buildOpenCodeSkillsDir(config: Record<string, unknown>): Promise<string> {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-opencode-skills-"));
+async function buildOpenCodeSkillsDir(flavor: OpenCodeFlavor, config: Record<string, unknown>): Promise<string> {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), `paperclip-${flavor.adapterKey}-skills-`));
   const target = path.join(tmp, "skills");
   await fs.mkdir(target, { recursive: true });
   const availableEntries = await readPaperclipRuntimeSkillEntries(config, __moduleDir);
@@ -221,7 +225,13 @@ async function buildOpenCodeSkillsDir(config: Record<string, unknown>): Promise<
   return target;
 }
 
-export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
+/** Build the heartbeat `execute` function for one OpenCode-family flavor. */
+export function createExecute(
+  flavor: OpenCodeFlavor,
+): (ctx: AdapterExecutionContext) => Promise<AdapterExecutionResult> {
+  const modelsApi = createOpenCodeModelsApi(flavor);
+
+  return async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const { runId, agent, runtime, config, context, onLog, onMeta, onSpawn, authToken } = ctx;
   const executionTarget = readAdapterExecutionTarget({
     executionTarget: ctx.executionTarget,
@@ -235,7 +245,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       ? DEFAULT_PAPERCLIP_CONVERSATION_PROMPT_TEMPLATE
       : DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
   );
-  const command = asString(config.command, "opencode");
+  const command = asString(config.command, flavor.defaultCommand);
   const model = asString(config.model, "").trim();
   const variant = asString(config.variant, "").trim();
 
@@ -261,10 +271,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const desiredOpenCodeSkillNames = resolveLegacyPaperclipDesiredSkillNames(config, openCodeSkillEntries);
   if (!executionTargetIsRemote) {
     await ensureOpenCodeSkillsInjected(
+      flavor,
       onLog,
       openCodeSkillEntries,
       desiredOpenCodeSkillNames,
-      resolveOpenCodeSkillsHome(config),
+      resolveFlavorSkillsHome(flavor, config),
     );
   }
 
@@ -320,15 +331,15 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     executionTargetIsRemote,
     executionCwd: effectiveExecutionCwd,
   });
-  // Prevent OpenCode from writing an opencode.json config file into the
-  // project working directory (which would pollute the git repo).  Model
-  // selection is already handled via the --model CLI flag.  Set after the
-  // envConfig loop so user overrides cannot disable this guard.
-  env.OPENCODE_DISABLE_PROJECT_CONFIG = "true";
+  // Prevent the CLI from writing a project config file into the working
+  // directory (which would pollute the git repo).  Model selection is already
+  // handled via the --model CLI flag.  Set after the envConfig loop so user
+  // overrides cannot disable this guard.
+  env[flavor.disableProjectConfigEnvVar] = "true";
   if (authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }
-  const preparedRuntimeConfig = await prepareOpenCodeRuntimeConfig({ env, config });
+  const preparedRuntimeConfig = await prepareOpenCodeRuntimeConfig({ env, config, flavor });
   const localRuntimeConfigHome =
     preparedRuntimeConfig.notes.length > 0 ? preparedRuntimeConfig.env.XDG_CONFIG_HOME : "";
   try {
@@ -354,7 +365,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       onLog,
     });
     await ensureAdapterExecutionTargetCommandResolvable(command, executionTarget, cwd, runtimeEnv, {
-      installCommand: SANDBOX_INSTALL_COMMAND,
+      installCommand: flavor.sandboxInstallCommand,
       timeoutSec,
     });
     const resolvedCommand = await resolveAdapterExecutionTargetCommandForLogs(command, executionTarget, cwd, runtimeEnv);
@@ -364,7 +375,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       resolvedCommand,
     });
     if (!executionTargetIsRemote) {
-      await ensureOpenCodeModelConfiguredAndAvailable({
+      await modelsApi.ensureModelConfiguredAndAvailable({
         model,
         command,
         cwd,
@@ -383,18 +394,18 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     let paperclipBridge: Awaited<ReturnType<typeof startAdapterExecutionTargetPaperclipBridge>> = null;
 
     if (executionTarget?.kind === "remote") {
-      localSkillsDir = await buildOpenCodeSkillsDir(config);
+      localSkillsDir = await buildOpenCodeSkillsDir(flavor, config);
       await onLog(
         "stdout",
-        `[paperclip] Syncing workspace and OpenCode runtime assets to ${describeAdapterExecutionTarget(executionTarget)}.\n`,
+        `[paperclip] Syncing workspace and ${flavor.productName} runtime assets to ${describeAdapterExecutionTarget(executionTarget)}.\n`,
       );
       const preparedExecutionTargetRuntime = await prepareAdapterExecutionTargetRuntime({
         runId,
         target: executionTarget,
-        adapterKey: "opencode",
+        adapterKey: flavor.adapterKey,
         timeoutSec,
         workspaceLocalDir: cwd,
-        installCommand: SANDBOX_INSTALL_COMMAND,
+        installCommand: flavor.sandboxInstallCommand,
         detectCommand: command,
         onProgress: (line) => onLog("stdout", line),
         onRuntimeProgress: ctx.onRuntimeProgress,
@@ -455,7 +466,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             onLog,
           });
       if (remoteHomeDir && preparedExecutionTargetRuntime.assetDirs.skills) {
-        const remoteSkillsDir = path.posix.join(remoteHomeDir, ".claude", "skills");
+        const remoteSkillsDir = path.posix.join(remoteHomeDir, ...flavor.skillsHomeSegments);
         await runAdapterExecutionTargetShellCommand(
           runId,
           executionTarget,
@@ -472,6 +483,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         env: preparedRuntimeConfig.env,
         timeoutSec,
         graceSec,
+        flavor,
       });
     }
     const runtimeExecutionTarget = overrideAdapterExecutionTargetRemoteCwd(executionTarget, effectiveExecutionCwd);
@@ -482,7 +494,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         enableSandboxDuplexBridge: adapterExecutionTargetEnablesSandboxDuplexBridge(runtimeExecutionTarget),
         duplexObservabilityRecorder: adapterExecutionTargetDuplexObservabilityRecorder(runtimeExecutionTarget),
         runtimeRootDir: remoteRuntimeRootDir,
-        adapterKey: "opencode",
+        adapterKey: flavor.adapterKey,
         timeoutSec,
         hostApiToken: preparedRuntimeConfig.env.PAPERCLIP_API_KEY,
         onLog,
@@ -513,12 +525,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (executionTargetIsRemote && runtimeSessionId && !canResumeSession) {
       await onLog(
         "stdout",
-        `[paperclip] OpenCode session "${runtimeSessionId}" does not match the current remote execution identity and will not be resumed in "${effectiveExecutionCwd}". Starting a fresh remote session.\n`,
+        `[paperclip] ${flavor.productName} session "${runtimeSessionId}" does not match the current remote execution identity and will not be resumed in "${effectiveExecutionCwd}". Starting a fresh remote session.\n`,
       );
     } else if (runtimeSessionId && !canResumeSession) {
       await onLog(
         "stdout",
-        `[paperclip] OpenCode session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${effectiveExecutionCwd}".\n`,
+        `[paperclip] ${flavor.productName} session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${effectiveExecutionCwd}".\n`,
       );
     }
     const instructionsFilePath = asString(config.instructionsFilePath, "").trim();
@@ -604,16 +616,22 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       heartbeatPromptChars: renderedPrompt.length,
     };
 
-    // Optional diagnostic: surface OpenCode's own logs on stderr (captured into the
+    // Optional diagnostic: surface the CLI's own logs on stderr (captured into the
     // run result) so failures that OpenCode otherwise wraps as an opaque
     // "Unexpected server error" can be diagnosed in remote/sandbox runs where the
-    // log file is unreachable. Toggle via PAPERCLIP_OPENCODE_PRINT_LOGS (run env,
-    // then process env).
+    // log file is unreachable. Toggle via the flavor's print-logs env var
+    // (PAPERCLIP_OPENCODE_PRINT_LOGS for OpenCode; run env, then process env).
     const printLogs = isTruthyEnvFlag(
-      env.PAPERCLIP_OPENCODE_PRINT_LOGS ?? process.env.PAPERCLIP_OPENCODE_PRINT_LOGS,
+      env[flavor.printLogsEnvVar] ?? process.env[flavor.printLogsEnvVar],
     );
+    // Kilo needs `--auto` to approve tool permissions in unattended runs; OpenCode
+    // relies on the injected runtime config instead. Both honor the same
+    // `dangerouslySkipPermissions` switch so an operator can turn either off.
+    const headlessPermissionArgs = asBoolean(config.dangerouslySkipPermissions, true)
+      ? flavor.headlessPermissionArgs
+      : [];
     const buildArgs = (resumeSessionId: string | null) => {
-      const args = ["run", "--format", "json"];
+      const args = ["run", "--format", "json", ...headlessPermissionArgs];
       if (printLogs) args.push("--print-logs");
       if (resumeSessionId) args.push("--session", resumeSessionId);
       if (model) args.push("--model", model);
@@ -626,7 +644,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       const args = buildArgs(resumeSessionId);
       if (onMeta) {
         await onMeta({
-          adapterType: "opencode_local",
+          adapterType: flavor.adapterType,
           command: resolvedCommand,
           cwd: effectiveExecutionCwd,
           commandNotes,
@@ -700,7 +718,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       const fallbackErrorMessage =
         parsedError ||
         stderrLine ||
-        `OpenCode exited with code ${synthesizedExitCode ?? -1}`;
+        `${flavor.productName} exited with code ${synthesizedExitCode ?? -1}`;
       const modelId = model || null;
 
       return {
@@ -745,7 +763,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       ) {
         await onLog(
           "stdout",
-          `[paperclip] OpenCode session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
+          `[paperclip] ${flavor.productName} session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
         );
         const retry = await runAttempt(null);
         return toResult(retry, true);
@@ -762,4 +780,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   } finally {
     await preparedRuntimeConfig.cleanup();
   }
+  };
 }
+
+export const execute = createExecute(OPENCODE_FLAVOR);
