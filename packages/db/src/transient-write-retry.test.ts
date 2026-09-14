@@ -97,6 +97,24 @@ describe("withTransientWriteRetry", () => {
     await Promise.all([pending, pending.catch(() => undefined), pending.then((rows) => rows)]);
     expect(state.calls).toBe(1);
   });
+
+  it("never executes a query twice when a caller both awaits it and takes its values", async () => {
+    // `.values()` selects the row shape of the one execution, like the driver.
+    // Starting a second execution here would repeat a mutation's effect.
+    const { sql, state } = stubSql({ failures: 0 });
+    const pending = withTransientWriteRetry(sql).unsafe("insert into t values (1)", []);
+    const rows = await pending;
+    const values = await pending.values();
+    expect(state.calls).toBe(1);
+    expect(values).toBe(rows);
+  });
+
+  it("takes the values shape when it is chosen before the query runs", async () => {
+    const { sql, state } = stubSql({ failures: 0 });
+    const pending = withTransientWriteRetry(sql).unsafe("select 1", []);
+    expect(await pending.values()).toEqual([[1]]);
+    expect(state.calls).toBe(1);
+  });
 });
 
 describe("createDb with the retrying client", () => {

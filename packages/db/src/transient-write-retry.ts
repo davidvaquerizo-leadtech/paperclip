@@ -57,20 +57,32 @@ export function withTransientWriteRetry<T extends Sql>(sql: T): T {
           // model; leave those calls exactly as they were.
           return (target.unsafe as (...args: unknown[]) => unknown)(query, parameters, ...rest);
         }
-        // postgres.js queries execute lazily on first await. Mirror that: hand
-        // back a pending shape that only runs — and only retries — once a
-        // consumer settles it, and runs a single execution no matter how many
-        // handlers attach.
-        let rows: Promise<unknown> | undefined;
-        let values: Promise<unknown> | undefined;
-        const rowsOnce = () => (rows ??= runWithRetry(() => Promise.resolve(unsafe(query, parameters))));
-        return {
+        // postgres.js queries execute lazily, exactly once, and `.values()`
+        // selects the row shape of that one execution rather than starting a
+        // second one. Mirror both halves: the execution starts when a consumer
+        // first settles the query, `.values()` marks the shape and returns the
+        // same pending query, and every later handler joins the same run. A
+        // shape chosen after the run started cannot change it — the same as
+        // the driver, and the reason a mutation can never execute twice here.
+        let started: Promise<unknown> | undefined;
+        let wantsValues = false;
+        const runOnce = () =>
+          (started ??= runWithRetry(() =>
+            wantsValues
+              ? unsafe(query, parameters).values()
+              : Promise.resolve(unsafe(query, parameters)),
+          ));
+        const pending = {
           then: (onFulfilled?: ((value: unknown) => unknown) | null, onRejected?: ((reason: unknown) => unknown) | null) =>
-            rowsOnce().then(onFulfilled, onRejected),
-          catch: (onRejected?: ((reason: unknown) => unknown) | null) => rowsOnce().catch(onRejected),
-          finally: (onFinally?: (() => void) | null) => rowsOnce().finally(onFinally),
-          values: () => (values ??= runWithRetry(() => unsafe(query, parameters).values())),
+            runOnce().then(onFulfilled, onRejected),
+          catch: (onRejected?: ((reason: unknown) => unknown) | null) => runOnce().catch(onRejected),
+          finally: (onFinally?: (() => void) | null) => runOnce().finally(onFinally),
+          values: () => {
+            if (!started) wantsValues = true;
+            return pending;
+          },
         };
+        return pending;
       };
       return retryingUnsafe;
     },
