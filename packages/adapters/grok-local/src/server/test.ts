@@ -393,8 +393,14 @@ export async function testEnvironment(
   };
   } finally {
     try { await restore?.(); } finally {
-      if (stagedHome) await rm(stagedHome, { recursive: true, force: true });
-      if (runtimeWorkspaceLocalDir) await rm(runtimeWorkspaceLocalDir, { recursive: true, force: true }).catch(() => {});
+      // Both temporary directories are removed even when one removal fails,
+      // and neither failure turns an answered environment test into a thrown
+      // error: these are best-effort temp directories, and the caller asked
+      // for checks.
+      await Promise.allSettled([
+        stagedHome ? rm(stagedHome, { recursive: true, force: true }) : undefined,
+        runtimeWorkspaceLocalDir ? rm(runtimeWorkspaceLocalDir, { recursive: true, force: true }) : undefined,
+      ]);
     }
   }
 }
