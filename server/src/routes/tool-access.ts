@@ -6,6 +6,7 @@ import {
   APP_STORE_DEFINITIONS,
   GITHUB_CONNECTOR_PROFILES,
   GOOGLE_WORKSPACE_CONNECTOR_PROFILES,
+  isAgentStatusAssignableToWork,
   isGitHubConnectorProfileId,
   isGoogleWorkspaceConnectorProfileId,
   TOOL_ACTION_REQUEST_STATUSES,
@@ -716,7 +717,7 @@ function connectorEnrollmentPrincipal(req: Request): string {
       .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)))
       .limit(1))[0];
     // Admin permission bypasses must not make unassignable agents testable.
-    if (!agent || agent.id !== agentId || agent.status === "terminated" || agent.status === "pending_approval") {
+    if (!agent || agent.id !== agentId || !isAgentStatusAssignableToWork(agent.status)) {
       throw forbidden("This agent is not available for testing");
     }
     const decision = await access.decide({
