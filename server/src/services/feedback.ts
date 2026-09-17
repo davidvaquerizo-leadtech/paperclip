@@ -1614,7 +1614,7 @@ async function buildFeedbackTraceBundleFromRow(
         files.push(...adapter.files);
         rawAdapterTrace = adapter.raw;
         normalizedAdapterTrace = adapter.normalized;
-      } else if (run.adapterType === "opencode_local") {
+      } else if (run.adapterType === "opencode_local" || run.adapterType === "kilocode_local") {
         const adapter = await buildOpenCodeTraceFiles({
           sessionId: run.sessionIdAfter ?? run.sessionIdBefore,
           stdoutText,

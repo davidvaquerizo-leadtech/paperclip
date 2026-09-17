@@ -83,18 +83,23 @@ export function compactRecord(record: Record<string, unknown>) {
   );
 }
 
+/** OpenCode and its forks share the `variant` effort contract. */
+function isOpenCodeFamilyAdapter(adapterType: string | null | undefined) {
+  return adapterType === "opencode_local" || adapterType === "kilocode_local";
+}
+
 export function thinkingEffortOptionsFor(
   adapterType: string | null | undefined,
   model?: string | null,
 ) {
   if (adapterType === "codex_local") return codexReasoningEffortOptions(model);
-  if (adapterType === "opencode_local") return ISSUE_THINKING_EFFORT_OPTIONS.opencode_local;
+  if (isOpenCodeFamilyAdapter(adapterType)) return ISSUE_THINKING_EFFORT_OPTIONS.opencode_local;
   return ISSUE_THINKING_EFFORT_OPTIONS.claude_local;
 }
 
 export function thinkingEffortKeyFor(adapterType: string | null | undefined) {
   if (adapterType === "codex_local") return "modelReasoningEffort";
-  if (adapterType === "opencode_local") return "variant";
+  if (isOpenCodeFamilyAdapter(adapterType)) return "variant";
   return "effort";
 }
 
@@ -102,7 +107,7 @@ export function thinkingEffortValueFor(adapterType: string | null | undefined, a
   if (adapterType === "codex_local") {
     return String(adapterConfig.modelReasoningEffort ?? adapterConfig.reasoningEffort ?? adapterConfig.effort ?? "");
   }
-  if (adapterType === "opencode_local") {
+  if (isOpenCodeFamilyAdapter(adapterType)) {
     return String(adapterConfig.variant ?? "");
   }
   return String(adapterConfig.effort ?? "");
